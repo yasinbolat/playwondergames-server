@@ -75,7 +75,7 @@ function startCountdown(room) {
   if (count0 >= 8) { startRound(room); return; }
 
   room.status = 'countdown';
-  let count = 10;
+  let count = 5;
   io.to(room.code).emit('countdown', { count });
 
   room.countdownInterval = setInterval(() => {
