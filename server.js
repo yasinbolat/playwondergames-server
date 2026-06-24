@@ -285,6 +285,8 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     const room = rooms[socket.roomCode];
     if (!room) return;
+    const leftNickname = room.players[socket.id]?.nickname || '?';
+    const wasEbe = room.status === 'playing' && room.ebe === socket.id;
     delete room.players[socket.id];
     const remaining = Object.keys(room.players).length;
 
@@ -297,20 +299,37 @@ io.on('connection', (socket) => {
 
     if (room.master === socket.id) transferMaster(room);
 
-    if (room.status === 'playing' && room.ebe === socket.id) {
-      const ids = Object.keys(room.players);
-      const newEbeId = ids[Math.floor(Math.random() * ids.length)];
-      switchEbe(room, newEbeId);
-    }
-
     if (room.status === 'countdown' && remaining < 2) {
       clearInterval(room.countdownInterval);
       room.status = 'lobby';
     }
 
     io.to(room.code).emit('playerLeft', {
-      id: socket.id, players: room.players, master: room.master,
+      id: socket.id, nickname: leftNickname, players: room.players, master: room.master,
     });
+
+    if (wasEbe) {
+      clearInterval(room.timerInterval);
+      if (remaining < 2) {
+        room.status = 'lobby';
+        room.ebe = null;
+        broadcastRoom(room);
+      } else {
+        room.status = 'lobby';
+        room.ebe = null;
+        io.to(room.code).emit('ebeLeft', { nickname: leftNickname });
+        setTimeout(() => {
+          if (Object.keys(room.players).length >= 2 && room.status === 'lobby') {
+            startRound(room);
+          }
+        }, 3000);
+      }
+    } else if (room.status === 'playing' && remaining < 2) {
+      clearInterval(room.timerInterval);
+      room.status = 'lobby';
+      room.ebe = null;
+      broadcastRoom(room);
+    }
   });
 });
 
