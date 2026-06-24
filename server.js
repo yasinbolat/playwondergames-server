@@ -176,24 +176,6 @@ function switchEbe(room, newEbeId) {
   }, 1000);
 }
 
-function checkTag(room, moverId) {
-  if (room.status !== 'playing' || room.ebe !== moverId) return;
-  const ebe = room.players[moverId];
-  if (!ebe) return;
-  const now = Date.now();
-  if (ebe.tagImmunityUntil && now < ebe.tagImmunityUntil) return;
-  for (const id in room.players) {
-    if (id === moverId) continue;
-    const p = room.players[id];
-    if (p.tagImmunityUntil && now < p.tagImmunityUntil) continue;
-    const dx = ebe.x - p.x, dy = ebe.y - p.y;
-    if (Math.sqrt(dx * dx + dy * dy) < 44) {
-      switchEbe(room, id);
-      break;
-    }
-  }
-}
-
 function playerJoin(socket, room, uid, nickname) {
   const hue = Math.floor(Math.random() * 360);
   const spawns = SPAWN_POINTS[room.mapId] || SPAWN_POINTS.forest;
@@ -266,7 +248,22 @@ io.on('connection', (socket) => {
     player.x = Math.max(10, Math.min(2390, x));
     player.y = Math.max(10, Math.min(1790, y));
     socket.to(socket.roomCode).emit('playerMoved', { id: socket.id, x: player.x, y: player.y });
-    checkTag(room, socket.id);
+  });
+
+  // Client-authoritative tag: the IT player's client claims a tag (it sees the
+  // freshest overlap). Server validates loosely against latency/interpolation.
+  socket.on('claimTag', ({ target }) => {
+    const room = rooms[socket.roomCode];
+    if (!room || room.status !== 'playing' || room.ebe !== socket.id) return;
+    const ebe = room.players[socket.id], tp = room.players[target];
+    if (!ebe || !tp) return;
+    const now = Date.now();
+    if (tp.tagImmunityUntil && now < tp.tagImmunityUntil) return;
+    if (ebe.tagImmunityUntil && now < ebe.tagImmunityUntil) return;
+    // sanity check: reject only if clearly impossible (anti-teleport), generous for lag
+    const dx = ebe.x - tp.x, dy = ebe.y - tp.y;
+    if (dx * dx + dy * dy > 120 * 120) return;
+    switchEbe(room, target);
   });
 
   socket.on('startGame', () => {
