@@ -54,7 +54,7 @@ function broadcastRoom(room) {
   io.to(room.code).emit('roomState', {
     players: room.players, master: room.master, ebe: room.ebe,
     timer: room.timer, status: room.status, mapId: room.mapId,
-    code: room.code, round: room.round,
+    code: room.code, round: room.round, isQuickMatch: room.isQuickMatch,
   });
 }
 
@@ -68,14 +68,15 @@ function transferMaster(room) {
   io.to(room.code).emit('masterChanged', { master: newMaster });
 }
 
-function startCountdown(room) {
+function startCountdown(room, duration) {
   if (room.status !== 'lobby') return;
   const count0 = Object.keys(room.players).length;
   if (count0 < 2) return;
   if (count0 >= 8) { startRound(room); return; }
 
+  const secs = duration || (room.isQuickMatch ? 15 : 5);
   room.status = 'countdown';
-  let count = 5;
+  let count = secs;
   io.to(room.code).emit('countdown', { count });
 
   room.countdownInterval = setInterval(() => {
@@ -219,9 +220,10 @@ function playerJoin(socket, room, uid, nickname) {
   io.to(room.code).emit('playerJoined', {
     players: room.players, master: room.master,
     code: room.code, mapId: room.mapId, status: room.status,
+    isQuickMatch: room.isQuickMatch,
   });
 
-  if (Object.keys(room.players).length >= 2 && room.status === 'lobby') {
+  if (room.isQuickMatch && Object.keys(room.players).length >= 2 && room.status === 'lobby') {
     startCountdown(room);
   }
 }
@@ -239,7 +241,7 @@ io.on('connection', (socket) => {
     const room = rooms[code?.toUpperCase()];
     if (!room) { socket.emit('joinError', { msg: 'Oda bulunamadı' }); return; }
     if (Object.keys(room.players).length >= 8) { socket.emit('joinError', { msg: 'Oda dolu (max 8)' }); return; }
-    if (room.status === 'playing') { socket.emit('joinError', { msg: 'Oyun devam ediyor' }); return; }
+    if (room.status === 'playing' || (room.status === 'countdown' && !room.isQuickMatch)) { socket.emit('joinError', { msg: 'Oyun devam ediyor' }); return; }
     playerJoin(socket, room, uid, nickname);
   });
 
@@ -248,7 +250,7 @@ io.on('connection', (socket) => {
     let found = null;
     for (const code in rooms) {
       const r = rooms[code];
-      if (r.mapId === key && r.isQuickMatch && r.status === 'lobby' && Object.keys(r.players).length < 8) {
+      if (r.mapId === key && r.isQuickMatch && (r.status === 'lobby' || r.status === 'countdown') && Object.keys(r.players).length < 8) {
         found = r; break;
       }
     }
