@@ -155,6 +155,7 @@ function switchEbe(room, newEbeId) {
   room.players[room.ebe].isEbe = false;
   room.ebe = newEbeId;
   room.players[newEbeId].isEbe = true;
+  room.players[newEbeId].tagImmunityUntil = Date.now() + 1500;
   room.timer = 60;
 
   io.to(room.code).emit('ebeChanged', {
@@ -178,9 +179,12 @@ function checkTag(room, moverId) {
   if (room.status !== 'playing' || room.ebe !== moverId) return;
   const ebe = room.players[moverId];
   if (!ebe) return;
+  const now = Date.now();
+  if (ebe.tagImmunityUntil && now < ebe.tagImmunityUntil) return;
   for (const id in room.players) {
     if (id === moverId) continue;
     const p = room.players[id];
+    if (p.tagImmunityUntil && now < p.tagImmunityUntil) continue;
     const dx = ebe.x - p.x, dy = ebe.y - p.y;
     if (Math.sqrt(dx * dx + dy * dy) < 44) {
       switchEbe(room, id);
