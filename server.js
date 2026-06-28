@@ -176,7 +176,7 @@ function switchEbe(room, newEbeId) {
   }, 1000);
 }
 
-function playerJoin(socket, room, uid, nickname) {
+function playerJoin(socket, room, uid, nickname, baseWins) {
   const hue = Math.floor(Math.random() * 360);
   const spawns = SPAWN_POINTS[room.mapId] || SPAWN_POINTS.forest;
   const idx = Object.keys(room.players).length;
@@ -188,6 +188,7 @@ function playerJoin(socket, room, uid, nickname) {
     x: s.x, y: s.y,
     isEbe: false, isMaster: false,
     score: 0, xpGained: 0,
+    baseWins: Number(baseWins) || 0, // permanent career wins at join (for display)
   };
 
   if (!room.master) {
@@ -213,21 +214,21 @@ function playerJoin(socket, room, uid, nickname) {
 io.on('connection', (socket) => {
   console.log('connected:', socket.id);
 
-  socket.on('createRoom', ({ uid, nickname, mapId }) => {
+  socket.on('createRoom', ({ uid, nickname, mapId, baseWins }) => {
     const room = createRoom(mapId || 'forest');
-    playerJoin(socket, room, uid, nickname);
+    playerJoin(socket, room, uid, nickname, baseWins);
     socket.emit('roomCreated', { code: room.code });
   });
 
-  socket.on('joinRoom', ({ uid, nickname, code }) => {
+  socket.on('joinRoom', ({ uid, nickname, code, baseWins }) => {
     const room = rooms[code?.toUpperCase()];
     if (!room) { socket.emit('joinError', { msg: 'Oda bulunamadı' }); return; }
     if (Object.keys(room.players).length >= 8) { socket.emit('joinError', { msg: 'Oda dolu (max 8)' }); return; }
     if (room.status === 'playing' || (room.status === 'countdown' && !room.isQuickMatch)) { socket.emit('joinError', { msg: 'Oyun devam ediyor' }); return; }
-    playerJoin(socket, room, uid, nickname);
+    playerJoin(socket, room, uid, nickname, baseWins);
   });
 
-  socket.on('joinQuickMatch', ({ uid, nickname, mapId }) => {
+  socket.on('joinQuickMatch', ({ uid, nickname, mapId, baseWins }) => {
     const key = mapId || 'forest';
     let found = null;
     for (const code in rooms) {
@@ -237,7 +238,7 @@ io.on('connection', (socket) => {
       }
     }
     if (!found) { found = createRoom(key); found.isQuickMatch = true; }
-    playerJoin(socket, found, uid, nickname);
+    playerJoin(socket, found, uid, nickname, baseWins);
   });
 
   socket.on('move', ({ x, y }) => {
