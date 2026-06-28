@@ -4,7 +4,15 @@ const { Server } = require('socket.io');
 
 const app = express();
 const httpServer = createServer(app);
-const io = new Server(httpServer, { cors: { origin: '*' } });
+// Realtime tuning: prefer websocket (skip polling upgrade dance), disable per-message
+// compression (adds CPU+latency on tiny move packets), and disable Nagle (TCP_NODELAY)
+// so small packets are sent immediately instead of being buffered.
+const io = new Server(httpServer, {
+  cors: { origin: '*' },
+  perMessageDeflate: false,
+  httpCompression: false,
+});
+httpServer.on('connection', (sock) => { try { sock.setNoDelay(true); } catch (e) {} });
 const PORT = process.env.PORT || 3000;
 
 const rooms = {};
